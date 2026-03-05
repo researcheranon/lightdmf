@@ -101,9 +101,7 @@ elif args['dataset'] == 'ravdess':
 elif args['dataset'] == 'tess':
     args['dataset_dir'] = Path('../../../../../datasets/public/TESS')
 
-if args['dataset'] == 'msp_podcast':
-    args['features_dir'] = Path('../../../../../datasets/public/MSP_podcast/features')
-elif args['dataset'] == 'merged':
+if args['dataset'] == 'merged':
     args['features_dir'] = None  # Handled in dataset.py
 else:
     args['features_dir'] = args['dataset_dir'] / 'features'
