@@ -1,0 +1,8 @@
+__pycache__
+requirements_all.txt
+lightdmf.ipynb
+meta/
+flagship/
+_log_slurm/
+output/
+!output/lightweight
