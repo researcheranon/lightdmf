@@ -90,6 +90,11 @@ class StageProfiler:
         lines.append(f"{'─'*52}\n")
         return "\n".join(lines)
 
+    def reset(self) -> None:
+        with self._lock:
+            self._totals.clear()
+            self._counts.clear()
+
     def get_stage_time(self, stage: str) -> float:
         return float(self._totals.get(stage, 0.0))
 
@@ -509,6 +514,7 @@ class Inference:
         if not self.time_enabled:
             logger.disabled = True
 
+        self.profiler.reset()
         run_start_time = time.time()
 
         audio, _ = librosa.load(file_path, sr=self.sr)
@@ -524,16 +530,14 @@ class Inference:
         audio_length_sec = len(audio) / max(self.sr, 1)
 
         print("\nRun summary:", flush=True)
-        print(f"Text model: {self.cfg['text_model']}", flush=True)
-        print(f"Audio model: {self.cfg['audio_model']}", flush=True)
         print(f"Audio length (s): {audio_length_sec:.2f}", flush=True)
         print(f"Total time (s): {total_elapsed:.2f}", flush=True)
         if not self._whisper_is_audio_model:
             whisper_time = self.profiler.get_stage_time("whisper_full_pass")
             non_whisper_time = max(0.0, total_elapsed - whisper_time)
             print(f"Total time excl. Whisper (s): {non_whisper_time:.2f}", flush=True)
-        if audio_length_sec > 0:
-            print(f"Rate (sec/sec): {total_elapsed / audio_length_sec:.3f}", flush=True)
+        if total_elapsed > 0:
+            print(f"Rate (x): {audio_length_sec / total_elapsed:.2f}", flush=True)
         print(f"Segments processed: {len(results)}", flush=True)
 
         print(self.profiler.report(), flush=True)
