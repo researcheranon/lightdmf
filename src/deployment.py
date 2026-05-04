@@ -399,7 +399,7 @@ class Inference:
 
         has_audio = torch.ones(len(audio_features), device=self.device, dtype=torch.bool)
 
-        with self.profiler.track("classifier"):
+        with self.profiler.track("Classifier"):
 
             outputs = self.classifier(
                 {
@@ -539,7 +539,7 @@ class Inference:
         print(f"{'Audio length (s):':<20} {audio_length_sec:.2f}", flush=True)
         print(f"{'Processing time (s):':<20} {total_elapsed:.2f}", flush=True)
         if not self._whisper_is_audio_model:
-            whisper_time = self.profiler.get_stage_time("whisper_full_pass")
+            whisper_time = self.profiler.get_stage_time("Whisper")
             non_whisper_time = max(0.0, total_elapsed - whisper_time)
             print(f"Total time excl. Whisper (s): {non_whisper_time:.2f}", flush=True)
         if total_elapsed > 0:
@@ -581,7 +581,7 @@ class Inference:
         if self.whisper is None:
             raise ValueError("Whisper model is required but not initialized.")
 
-        with self.profiler.track("whisper_full_pass"):
+        with self.profiler.track("Whisper"):
             whisper_out = self.whisper(audio=audio, sr=self.sr)
 
         texts: list[str] = whisper_out["text"]
@@ -604,7 +604,7 @@ class Inference:
         if not self.ignore_text and self.text_model_name != "none":
             if self.save_memory and not self._whisper_is_audio_model:
                 self._ensure_text_model_loaded()
-            with self.profiler.track("text_encode"):
+            with self.profiler.track("Text encoder"):
                 text_features = self._encode_text_batch(texts, self.text_batch_size)
             if self.save_memory and not self._whisper_is_audio_model:
                 self._release_text_model()
@@ -633,7 +633,7 @@ class Inference:
             if self.whisper is None:
                 raise ValueError("Whisper model is required but not initialized.")
 
-            with self.profiler.track("whisper_full_pass"):
+            with self.profiler.track("Whisper"):
                 whisper_out = self.whisper(audio=audio, sr=self.sr)
 
             texts: list[str] = whisper_out.get("text", [])
@@ -665,7 +665,7 @@ class Inference:
             text_features = None
             if not self.ignore_text and self.text_model_name != "none":
                 self._ensure_text_model_loaded()
-                with self.profiler.track("text_encode"):
+                with self.profiler.track("Text encoder"):
                     text_features = self._encode_text_batch(texts, self.text_batch_size)
                 self._release_text_model()
 
@@ -675,7 +675,7 @@ class Inference:
         if self.whisper is None:
             raise ValueError("Whisper model is required but not initialized.")
 
-        with self.profiler.track("whisper_full_pass"):
+        with self.profiler.track("Whisper"):
             whisper_out = self.whisper(audio=audio, sr=self.sr)
 
         texts: list[str] = whisper_out.get("text", [])
@@ -719,7 +719,7 @@ class Inference:
         text_features = None
         if not self.ignore_text and self.text_model_name != "none":
             self._ensure_text_model_loaded()
-            with self.profiler.track("text_encode"):
+            with self.profiler.track("Text encoder"):
                 text_features = self._encode_text_batch(texts, self.text_batch_size)
 
         return self._classify_batch(audio_features, texts, text_features, seg_lens_samples)
