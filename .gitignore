@@ -5,5 +5,6 @@ meta/
 flagship/
 _log_slurm/
 output/*
-!output/lightweight
-run/
+!output/lightweight/config.pth
+!output/lightweight/model.pth
+run/*
