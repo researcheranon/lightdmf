@@ -537,7 +537,7 @@ class Inference:
             non_whisper_time = max(0.0, total_elapsed - whisper_time)
             print(f"Total time excl. Whisper (s): {non_whisper_time:.2f}", flush=True)
         if total_elapsed > 0:
-            print(f"Rate (x): {audio_length_sec / total_elapsed:.2f}", flush=True)
+            print(f"Rate: x{audio_length_sec / total_elapsed:.2f}", flush=True)
         print(f"Segments processed: {len(results)}", flush=True)
 
         print(self.profiler.report(), flush=True)
