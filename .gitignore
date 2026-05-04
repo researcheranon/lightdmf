@@ -4,5 +4,6 @@ lightdmf.ipynb
 meta/
 flagship/
 _log_slurm/
-output/
+output/*
 !output/lightweight
+run/
