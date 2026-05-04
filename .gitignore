@@ -1,10 +1,10 @@
 __pycache__
 requirements_all.txt
 lightdmf.ipynb
-meta/
-flagship/
 _log_slurm/
 output/*
 !output/lightweight/config.pth
 !output/lightweight/model.pth
 run/*
+src_working/*
+src/microphone_input.py

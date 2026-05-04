@@ -70,22 +70,28 @@ class StageProfiler:
             elapsed = time.perf_counter() - t0
             with self._lock:
                 self._totals[stage] += elapsed
-                self._counts[stage] += 1
+                # self._counts[stage] += 1
 
     def report(self, title: str = "Stage profiling summary") -> str:
-        lines = [f"\n{'─'*52}", f"  {title}", f"{'─'*52}"]
+        # lines = [f"\n{'─'*52}", f"  {title}", f"{'─'*52}"]
+        lines = []
         if not self._totals:
             lines.append("  (no data)")
         else:
             total_wall = sum(self._totals.values())
-            lines.append(f"  {'Stage':<26} {'Calls':>5}  {'Total(s)':>9}  {'Avg(ms)':>9}  {'%':>6}")
-            lines.append(f"  {'─'*26}  {'─'*5}  {'─'*9}  {'─'*9}  {'─'*6}")
+            # lines.append(f"  {'Stage':<26} {'Calls':>5}  {'Total(s)':>9}  {'Avg(ms)':>9}  {'%':>6}")
+            lines.append(f"  {'Stage':<26}  {'Total (s)':>9}  {'%':>6}")
+
+            dashes = f"  {'─'*26}  {'─'*9}  {'─'*6}"
+            lines.append(dashes)
             for stage, total in sorted(self._totals.items(), key=lambda x: -x[1]):
                 n = self._counts[stage]
                 pct = 100.0 * total / total_wall if total_wall > 0 else 0.0
-                avg_ms = 1000.0 * total / n if n > 0 else 0.0
-                lines.append(f"  {stage:<26}  {n:>5}  {total:>9.3f}  {avg_ms:>9.1f}  {pct:>5.1f}%")
-            lines.append(f"  {'─'*26}  {'─'*5}  {'─'*9}  {'─'*9}  {'─'*6}")
+                # avg_ms = 1000.0 * total / n if n > 0 else 0.0
+                # lines.append(f"  {stage:<26}  {n:>5}  {total:>9.3f}  {avg_ms:>9.1f}  {pct:>5.1f}%")
+                lines.append(f"  {stage:<26}  {total:>9.3f}  {pct:>5.1f}%")
+
+            lines.append(dashes)
             lines.append(f"  {'TOTAL':<26}         {total_wall:>9.3f}")
         lines.append(f"{'─'*52}\n")
         return "\n".join(lines)
@@ -530,15 +536,15 @@ class Inference:
         audio_length_sec = len(audio) / max(self.sr, 1)
 
         print("\nRun summary:", flush=True)
-        print(f"Audio length (s): {audio_length_sec:.2f}", flush=True)
-        print(f"Total time (s): {total_elapsed:.2f}", flush=True)
+        print(f"{'Audio length (s):':<20} {audio_length_sec:.2f}", flush=True)
+        print(f"{'Processing time (s):':<20} {total_elapsed:.2f}", flush=True)
         if not self._whisper_is_audio_model:
             whisper_time = self.profiler.get_stage_time("whisper_full_pass")
             non_whisper_time = max(0.0, total_elapsed - whisper_time)
             print(f"Total time excl. Whisper (s): {non_whisper_time:.2f}", flush=True)
         if total_elapsed > 0:
-            print(f"Rate: x{audio_length_sec / total_elapsed:.2f}", flush=True)
-        print(f"Segments processed: {len(results)}", flush=True)
+            print(f"{'Rate:':<20} x {audio_length_sec / total_elapsed:.2f}", flush=True)
+        # print(f"Segments processed: {len(results)}", flush=True)
 
         print(self.profiler.report(), flush=True)
 
