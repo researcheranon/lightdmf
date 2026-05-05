@@ -23,6 +23,7 @@ import torchaudio
 import time
 import utils as u
 from typing import Dict
+from pathlib import Path
 
 
 try:
@@ -427,8 +428,131 @@ class Qwen3Text(torch.nn.Module):
 
 
 
+# class Whisper(torch.nn.Module):
+#     ENCODER_FRAMES_PER_SEC: float = 50.0  # 50 encoder frames per second
+
+#     def __init__(self, model_name, no_cuda=False, chunk_length_s=30, debug=False, quantize_8bit=True):
+#         super().__init__()
+
+#         self.debug = debug
+#         self.device = torch.device('cuda') if torch.cuda.is_available() and not no_cuda else torch.device('cpu')
+#         self.model_name = model_name
+#         self.dtype = torch.float16 if self.device.type == "cuda" else torch.float32
+#         self.chunk_length_s = chunk_length_s  # chunk length in seconds
+
+#         if model_name == 'distil_whisper':
+#             self.model_name = 'distil-whisper/distil-large-v3'
+#         else:
+#             self.model_name = f'openai/{model_name}'
+
+#         self.model = transformers.WhisperForConditionalGeneration.from_pretrained(
+#             self.model_name,
+#             torch_dtype=self.dtype,
+#             low_cpu_mem_usage=True
+#         ).to(self.device)
+
+
+#         # quantize linear layers
+#         if quantize_8bit and self.device.type == "cpu":
+#             self.model = torch.ao.quantization.quantize_dynamic(
+#                 self.model, {torch.nn.Linear}, dtype=torch.qint8
+#             )
+
+#         self.model.eval()
+
+#         self.processor = transformers.WhisperProcessor.from_pretrained(self.model_name)
+#         self.decoder_input_ids = torch.tensor([[self.model.config.decoder_start_token_id]]).to(self.device)
+#         self.decoder_attention_mask = torch.ones_like(self.decoder_input_ids).to(self.device)
+
+#     def __call__(self, audio=None, sr=16000):
+#         if audio.ndim == 2:
+#             audio = audio.mean(0)
+
+#         if self.debug:
+#             # Only use the first 5 seconds for debugging
+#             max_length = int(5 * sr)
+#             audio = audio[:max_length]
+
+#         # Resample if needed
+#         if sr != 16000:
+#             audio = torchaudio.transforms.Resample(sr, 16000)(torch.tensor(audio))
+#         else:
+#             audio = torch.tensor(audio)
+
+#         # Split into chunks
+#         chunk_size = self.chunk_length_s * sr
+#         num_chunks = math.ceil(audio.shape[0] / chunk_size)
+
+#         # all_segments: list[dict] = []       # {"start", "end", "text"} per segment
+#         all_encoder_hiddens: list[torch.Tensor] = []   # last encoder hidden state per segment
+#         # full_text = []
+#         all_texts = []
+#         all_times = []
+
+#         for i in range(num_chunks):
+#             chunk_start_s = i * self.chunk_length_s   # wall-clock offset for this chunk
+#             chunk_audio = audio[int(i * chunk_size): int((i + 1) * chunk_size)]
+#             if len(chunk_audio) == 0:
+#                 continue
+
+#             inputs = self.processor(
+#                 audio=chunk_audio,
+#                 sampling_rate=16000,
+#                 return_tensors="pt",
+#                 # return_attention_mask=True,
+#                 # truncation=False,
+#                 # padding="longest",
+#                 # language='en'
+#             )
+#             input_features = inputs.input_features.to(self.device).to(self.dtype)
+#             # attention_mask = inputs.attention_mask.to(self.device).to(self.dtype)
+
+#             # with torch.no_grad():
+#             with torch.inference_mode():
+#                 gen_out = self.model.generate(
+#                     input_features,
+#                     max_length=448,
+#                     output_hidden_states=True,
+#                     return_dict_in_generate=True,
+#                     return_timestamps=True,
+#                 )
+#                 # whisper pads all segments to 30 seconds anyway so they have same hiddens
+#                 segmented_output = gen_out['segments'][0]
+#                 hidden = segmented_output[0]['result']['encoder_hidden_states'][-1].squeeze(0)
+
+#                 segment_texts = [self.processor.tokenizer.decode(seg['tokens'], skip_special_tokens=True).strip() for seg in segmented_output]
+#                 start_times = [float(seg['start'].item()) for seg in segmented_output]
+#                 end_time = float(segmented_output[-1]['end'].item())
+#                 times = start_times + [end_time]
+#                 indices = [int(s * self.ENCODER_FRAMES_PER_SEC) for s in times]
+#                 # end_index = int(end_time * self.ENCODER_FRAMES_PER_SEC)
+#                 # indices.append(end_index)  # add end index for last segment
+#                 # split hidden states into segments based on start indices
+#                 encoder_hiddens = [hidden[indices[k]: indices[k + 1]] for k in range(len(indices) - 1)]
+        
+#                 all_texts += segment_texts
+#                 all_encoder_hiddens += encoder_hiddens
+
+#                 global_start_times = [chunk_start_s + s for s in start_times]
+#                 global_end_time = chunk_start_s + end_time
+#                 all_times += global_start_times
+#         all_times.append(global_end_time)
+#         return {
+#             "text": all_texts,
+#             "audio_feature": all_encoder_hiddens,
+#             "text_feature": None,
+#             "times": all_times
+#         }
+
 class Whisper(torch.nn.Module):
-    ENCODER_FRAMES_PER_SEC: float = 50.0  # 50 encoder frames per second
+    """
+
+    New whisper NO PAD
+    Whisper wrapper that avoids padding to 30 seconds.
+
+    It keeps the same output contract as Whisper (segment-level text and audio features).
+    """
+    ENCODER_FRAMES_PER_SEC: float = 50.0
 
     def __init__(self, model_name, no_cuda=False, chunk_length_s=30, debug=False, quantize_8bit=True):
         super().__init__()
@@ -437,21 +561,33 @@ class Whisper(torch.nn.Module):
         self.device = torch.device('cuda') if torch.cuda.is_available() and not no_cuda else torch.device('cpu')
         self.model_name = model_name
         self.dtype = torch.float16 if self.device.type == "cuda" else torch.float32
-        self.chunk_length_s = chunk_length_s  # chunk length in seconds
+        self.chunk_length_s = chunk_length_s
 
         if model_name == 'distil_whisper':
             self.model_name = 'distil-whisper/distil-large-v3'
         else:
             self.model_name = f'openai/{model_name}'
 
+        internet_access = True
+        if Path('../computer_name.txt').exists():
+            with open('../computer_name.txt', 'r') as f:
+                computer_name = f.read().strip()
+            internet_access = computer_name != 'deucalion'
+        if internet_access:
+            snapshot_path = None
+        else:
+            folder_name = 'models--' + self.model_name.replace('/', '--')
+            folder_path = Path('../../../.cache/huggingface/hub') / folder_name
+            snapshot_path = u.get_latest_hf_snapshot(folder_path)
+        
+        model_source = snapshot_path if snapshot_path is not None else self.model_name
+
         self.model = transformers.WhisperForConditionalGeneration.from_pretrained(
-            self.model_name,
+            model_source,
             torch_dtype=self.dtype,
             low_cpu_mem_usage=True
         ).to(self.device)
 
-
-        # quantize linear layers
         if quantize_8bit and self.device.type == "cpu":
             self.model = torch.ao.quantization.quantize_dynamic(
                 self.model, {torch.nn.Linear}, dtype=torch.qint8
@@ -459,7 +595,7 @@ class Whisper(torch.nn.Module):
 
         self.model.eval()
 
-        self.processor = transformers.WhisperProcessor.from_pretrained(self.model_name)
+        self.processor = transformers.WhisperProcessor.from_pretrained(model_source)
         self.decoder_input_ids = torch.tensor([[self.model.config.decoder_start_token_id]]).to(self.device)
         self.decoder_attention_mask = torch.ones_like(self.decoder_input_ids).to(self.device)
 
@@ -468,28 +604,25 @@ class Whisper(torch.nn.Module):
             audio = audio.mean(0)
 
         if self.debug:
-            # Only use the first 5 seconds for debugging
             max_length = int(5 * sr)
             audio = audio[:max_length]
 
-        # Resample if needed
         if sr != 16000:
             audio = torchaudio.transforms.Resample(sr, 16000)(torch.tensor(audio))
         else:
             audio = torch.tensor(audio)
 
-        # Split into chunks
-        chunk_size = self.chunk_length_s * sr
+        duration_sec = float(audio.shape[0]) / 16000.0
+
+        chunk_size = self.chunk_length_s * 16000
         num_chunks = math.ceil(audio.shape[0] / chunk_size)
 
-        # all_segments: list[dict] = []       # {"start", "end", "text"} per segment
-        all_encoder_hiddens: list[torch.Tensor] = []   # last encoder hidden state per segment
-        # full_text = []
+        all_encoder_hiddens: list[torch.Tensor] = []
         all_texts = []
         all_times = []
 
         for i in range(num_chunks):
-            chunk_start_s = i * self.chunk_length_s   # wall-clock offset for this chunk
+            chunk_start_s = i * self.chunk_length_s
             chunk_audio = audio[int(i * chunk_size): int((i + 1) * chunk_size)]
             if len(chunk_audio) == 0:
                 continue
@@ -498,37 +631,38 @@ class Whisper(torch.nn.Module):
                 audio=chunk_audio,
                 sampling_rate=16000,
                 return_tensors="pt",
-                # return_attention_mask=True,
-                # truncation=False,
-                # padding="longest",
-                # language='en'
+                padding="longest",
+                truncation=False,
+                return_attention_mask=True,
             )
             input_features = inputs.input_features.to(self.device).to(self.dtype)
-            # attention_mask = inputs.attention_mask.to(self.device).to(self.dtype)
+            attention_mask = inputs.attention_mask.to(self.device) if hasattr(inputs, "attention_mask") else None
 
-            # with torch.no_grad():
             with torch.inference_mode():
-                gen_out = self.model.generate(
-                    input_features,
-                    max_length=448,
-                    output_hidden_states=True,
-                    return_dict_in_generate=True,
-                    return_timestamps=True,
-                )
-                # whisper pads all segments to 30 seconds anyway so they have same hiddens
+                gen_kwargs = {
+                    "input_features": input_features,
+                    "max_length": 448,
+                    "output_hidden_states": True,
+                    "return_dict_in_generate": True,
+                    "return_timestamps": True,
+                }
+                if attention_mask is not None:
+                    gen_kwargs["attention_mask"] = attention_mask
+                gen_out = self.model.generate(**gen_kwargs)
+
                 segmented_output = gen_out['segments'][0]
                 hidden = segmented_output[0]['result']['encoder_hidden_states'][-1].squeeze(0)
 
-                segment_texts = [self.processor.tokenizer.decode(seg['tokens'], skip_special_tokens=True).strip() for seg in segmented_output]
+                segment_texts = [
+                    self.processor.tokenizer.decode(seg['tokens'], skip_special_tokens=True).strip()
+                    for seg in segmented_output
+                ]
                 start_times = [float(seg['start'].item()) for seg in segmented_output]
                 end_time = float(segmented_output[-1]['end'].item())
                 times = start_times + [end_time]
                 indices = [int(s * self.ENCODER_FRAMES_PER_SEC) for s in times]
-                # end_index = int(end_time * self.ENCODER_FRAMES_PER_SEC)
-                # indices.append(end_index)  # add end index for last segment
-                # split hidden states into segments based on start indices
                 encoder_hiddens = [hidden[indices[k]: indices[k + 1]] for k in range(len(indices) - 1)]
-        
+
                 all_texts += segment_texts
                 all_encoder_hiddens += encoder_hiddens
 
@@ -536,6 +670,8 @@ class Whisper(torch.nn.Module):
                 global_end_time = chunk_start_s + end_time
                 all_times += global_start_times
         all_times.append(global_end_time)
+        # print(len(all_texts), len(all_encoder_hiddens), len(all_times))
+
         return {
             "text": all_texts,
             "audio_feature": all_encoder_hiddens,

@@ -1,9 +1,20 @@
-print('Run started', flush=True)
+from pathlib import Path
+if Path('../computer_name.txt').exists():
+    with open('../computer_name.txt', 'r') as f:
+        computer_name = f.read().strip()
+    if computer_name == 'deucalion':
+        from resource_binder import bind_resources
+        bind_resources()
 
+import torch
+print('CUDA is available:', torch.cuda.is_available(), flush=True)
+
+print('Run started', flush=True)
 import time
 t0_import = time.time()
 
 import os
+import json
 
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"  # only show errors
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -20,8 +31,9 @@ from dataset import (
 
 from models import AttentionClassifier, AveragingClassifier
 from eval_case import CASEEvaluator
+from deployment import Deploy
 from torch.utils.data import DataLoader
-import torch
+
 from torch.optim.lr_scheduler import OneCycleLR
 from tqdm import tqdm
 from config import args
@@ -30,6 +42,8 @@ import numpy as np
 import random
 from pathlib import Path
 import contextlib
+
+print(f"Imports completed", flush=True)
 
 if args['seed'] > 0:
     np.random.seed(args['seed'])
@@ -48,6 +62,31 @@ def _seed_worker(worker_id: int) -> None:
         torch.manual_seed(worker_seed)
 
 
+def _run_post_training_deployment(work_dir: Path, no_cuda: bool, num_workers: int) -> None:
+    model_path = work_dir / "model.pth"
+    if not model_path.exists():
+        print(f"Warning: {model_path} not found. Skipping deployment.", flush=True)
+        return
+
+    print("Reloading saved model for post-training deployment...", flush=True)
+    deployer = Deploy(
+        file_path="../audio_samples/recording2.mp3",
+        checkpoint_dir=work_dir,
+        checkpoint_code=None,
+        no_cuda=no_cuda,
+        time_enabled=False,
+        ignore_text=False,
+        num_workers=max(1, int(num_workers)),
+        debug=False,
+        save_memory=True,
+    )
+    results = deployer.run()
+    output_path = work_dir / "deployment_output.txt"
+    with output_path.open("w", encoding="utf-8") as handle:
+        json.dump(results, handle, indent=2, ensure_ascii=True)
+    print(f"Deployment output written to {output_path}", flush=True)
+
+
 class SERTrainer:
     def __init__(self):
         self.train_step = 0
@@ -59,6 +98,8 @@ class SERTrainer:
         self.best_dev_accuracy = 0
         self.best_train_loss = float('inf')
         self.best_dev_loss = float('inf')
+        self.best_dev_audio_loss = float('inf')
+        self.best_dev_audio_loss_str = ""
         self.csv_in = None
 
         self.logging = u.create_exp_dir(args['work_dir'], debug=args['debug'] or args['test_only'], print_=args['lr_finder_steps'] <= 0)
@@ -185,7 +226,7 @@ class SERTrainer:
             ).to(self.device)
 
         self.case_evaluator = None
-        if args['case_mapping']:
+        if args['case_mapping'] and not args['skip_test']:
             self.case_evaluator = CASEEvaluator(
                 classifier=self.model,
                 model_config=self.model.model_config,
@@ -513,6 +554,7 @@ class SERTrainer:
                         available_splits = results.pop('_available_splits', ['dev', 'test', 'test2'])
                         ms_per_sample = ms_per_batch / args['batch_size']
                         dev_loss = results.get('dev', {}).get('loss', np.nan)
+                        dev_audio_loss = results.get('dev', {}).get('audio_loss', np.nan)
                         dev_micro_accuracy = results.get('dev', {}).get('micro_accuracy', np.nan)
                         dev_macro_accuracy = results.get('dev', {}).get('macro_accuracy', np.nan)
                         dev_macro_f1 = results.get('dev', {}).get('macro_f1', np.nan)
@@ -595,8 +637,8 @@ class SERTrainer:
                         if args['skip_test']:
                             test_accuracy = dev_accuracy
 
-                        if dev_accuracy > self.best_dev_accuracy:
-                            self.best_dev_accuracy = dev_accuracy
+                        if not np.isnan(dev_audio_loss) and dev_audio_loss < self.best_dev_audio_loss:
+                            self.best_dev_audio_loss = dev_audio_loss
                             
                             # Save best result in a file name
                             if best_test_result_str:
@@ -605,8 +647,13 @@ class SERTrainer:
                                 if old_path.exists():
                                     old_path.unlink()
 
+                            if self.best_dev_audio_loss_str:
+                                old_audio_path = args['work_dir'] / self.best_dev_audio_loss_str
+                                if old_audio_path.exists():
+                                    old_audio_path.unlink()
+
                             # Save new result
-                            if args['case_mapping']:
+                            if args['case_mapping'] and not args['skip_test'] and 'case' in results:
                                 best_test_result_str = f"CASE_{self.train_step}_{round(results['case']['micro_accuracy_text'], 4)}_{round(results['case']['micro_accuracy_audio'], 4)}"
                             elif args['skip_test']:
                                 best_test_result_str = f"DEV_{args['accuracy_averaging']}_{self.train_step}_{round(dev_accuracy, 4)}"
@@ -615,6 +662,8 @@ class SERTrainer:
                             new_path = args['work_dir'] / best_test_result_str
                             if not args['debug']:
                                 open(new_path, 'x').close()
+                                self.best_dev_audio_loss_str = f"DEV_AUDIO_LOSS_{self.train_step}_{round(dev_audio_loss, 4)}"
+                                open(args['work_dir'] / self.best_dev_audio_loss_str, 'x').close()
                                 # Save the best model
                                 self.model.save_model(args['work_dir'] / "model.pth")
                                 
@@ -889,3 +938,8 @@ if __name__ == "__main__":
         )
     else:
         trainer.train()
+        _run_post_training_deployment(
+            work_dir=args['work_dir'],
+            no_cuda=args['no_cuda'],
+            num_workers=args['num_workers'],
+        )

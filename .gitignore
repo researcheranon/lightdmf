@@ -6,18 +6,23 @@ _log_slurm/
 output/*
 
 # 2. Allow the subdirectories themselves (non-recursive)
-!output/flagship/
 !output/lightweight/
 
 # 3. Ignore everything inside those subdirectories
-output/flagship/*
 output/lightweight/*
 
 # 4. Finally, un-ignore the specific files you want
-!output/flagship/config.pth
-!output/flagship/model.pth
 !output/lightweight/config.pth
 !output/lightweight/model.pth
 run/*
 src_working/*
 src/microphone_input.py
+
+computer_name.txt
+notes.txt
+
+audio_samples/*
+audio_samples/case_concat.wav
+
+models_dev.py
+train_clean.py

@@ -14,6 +14,8 @@ import threading
 import warnings
 
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+os.environ.setdefault("HUGGINGFACE_HUB_VERBOSITY", "error")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 warnings.filterwarnings("ignore", message="`torch_dtype` is deprecated")
 
 import librosa
@@ -32,6 +34,9 @@ logging.basicConfig(
 logger = logging.getLogger("offline")
 logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
 logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+logging.getLogger("httpx").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 try:
     import transformers
@@ -536,14 +541,14 @@ class Inference:
         audio_length_sec = len(audio) / max(self.sr, 1)
 
         print("\nRun summary:", flush=True)
-        print(f"{'Audio length (s)':<19} :  {audio_length_sec:.2f}", flush=True)
-        print(f"{'Processing time (s)':<19} :  {total_elapsed:.2f}", flush=True)
+        print(f"{'Audio length (s)':<19} :  {audio_length_sec:5.2f}", flush=True)
+        print(f"{'Processing time (s)':<19} :  {total_elapsed:5.2f}", flush=True)
         # if not self._whisper_is_audio_model:
         #     whisper_time = self.profiler.get_stage_time("Whisper")
         #     non_whisper_time = max(0.0, total_elapsed - whisper_time)
         #     print(f"Total time excl. Whisper (s): {non_whisper_time:.2f}", flush=True)
         if total_elapsed > 0:
-            print(f"{'Rate':<19} : x {audio_length_sec / total_elapsed:.2f}\n", flush=True)
+            print(f"{'Rate':<19} : x{audio_length_sec / total_elapsed:5.2f}\n", flush=True)
         # print(f"Segments processed: {len(results)}", flush=True)
 
         print(self.profiler.report(), flush=True)
