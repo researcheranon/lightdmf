@@ -545,64 +545,64 @@ class Whisper(torch.nn.Module):
 
 
 
-class MSDynamicGate(nn.Module):
-    """
-    Multiscale pooling with input-dependent dynamic gating (attention across scales, per channel per timestep).
-    Kernel sizes:
-    12 frames (240 ms) -> syllable-to-short-word prosodic structure,
-        local pitch movement, energy modulation, and stress patterns (Speech Communication; Scherer).
-    24 frames (480 ms) -> multi-syllabic and short phrase-level contours,
-         pitch trajectories, rhythm, and local tempo variations (Pattern Recognition; El Ayadi et al.).
-    48 frames (960 ms) -> short phrase-level prosody and sustained trends in loudness and pitch baseline, 
-        stable affective state (Speech Communication; Scherer).
-    """
+# class MSDynamicGate(nn.Module):
+#     """
+#     Multiscale pooling with input-dependent dynamic gating (attention across scales, per channel per timestep).
+#     Kernel sizes:
+#     12 frames (240 ms) -> syllable-to-short-word prosodic structure,
+#         local pitch movement, energy modulation, and stress patterns (Speech Communication; Scherer).
+#     24 frames (480 ms) -> multi-syllabic and short phrase-level contours,
+#          pitch trajectories, rhythm, and local tempo variations (Pattern Recognition; El Ayadi et al.).
+#     48 frames (960 ms) -> short phrase-level prosody and sustained trends in loudness and pitch baseline, 
+#         stable affective state (Speech Communication; Scherer).
+#     """
 
-    def __init__(self, target_len=128, scales=(12, 24, 48)):
-        super().__init__()
-        self.target_len = target_len
-        self.scales = scales
-        self.num_scales = len(scales)
-        self.embed_dim = 384
+#     def __init__(self, target_len=128, scales=(12, 24, 48)):
+#         super().__init__()
+#         self.target_len = target_len
+#         self.scales = scales
+#         self.num_scales = len(scales)
+#         self.embed_dim = 384
 
-        # tiny linear layer to compute per-channel weights across scales
-        self.gate_linear = nn.Linear(self.num_scales, self.num_scales)
+#         # tiny linear layer to compute per-channel weights across scales
+#         self.gate_linear = nn.Linear(self.num_scales, self.num_scales)
 
 
-    def forward(self, x):
-        """
-        x: (L, D)
-        returns: (target_len, D)
+#     def forward(self, x):
+#         """
+#         x: (L, D)
+#         returns: (target_len, D)
 
-        Scale 1: kernel=12, stride=12, out_len=125
-        Scale 2: kernel=24, stride=12, out_len=124
-        Scale 3: kernel=48, stride=12, out_len=128
+#         Scale 1: kernel=12, stride=12, out_len=125
+#         Scale 2: kernel=24, stride=12, out_len=124
+#         Scale 3: kernel=48, stride=12, out_len=128
 
-        """
-        B, L, D = x.shape  # Batch size, sequence length, feature dimension
-        x_t = x.permute(0, 2, 1)  # (B, D, L)
+#         """
+#         B, L, D = x.shape  # Batch size, sequence length, feature dimension
+#         x_t = x.permute(0, 2, 1)  # (B, D, L)
 
-        pooled_scales = []
-        for kernel_len in self.scales:
-            stride = max(1, math.ceil((L - kernel_len) / (self.target_len - 1)))
-            pooled = F.avg_pool1d(x_t, kernel_size=kernel_len, stride=stride, padding=0)
-            out_len = pooled.size(2)
-            if out_len < self.target_len:
-                pooled = F.pad(pooled, (0, self.target_len - out_len))
-            elif out_len > self.target_len:
-                pooled = pooled[:, :, :self.target_len]
-            pooled_scales.append(pooled)  # (B, D, target_len)
+#         pooled_scales = []
+#         for kernel_len in self.scales:
+#             stride = max(1, math.ceil((L - kernel_len) / (self.target_len - 1)))
+#             pooled = F.avg_pool1d(x_t, kernel_size=kernel_len, stride=stride, padding=0)
+#             out_len = pooled.size(2)
+#             if out_len < self.target_len:
+#                 pooled = F.pad(pooled, (0, self.target_len - out_len))
+#             elif out_len > self.target_len:
+#                 pooled = pooled[:, :, :self.target_len]
+#             pooled_scales.append(pooled)  # (B, D, target_len)
 
-        # Stack scales: (B, D, target_len, N)
-        stacked = torch.stack(pooled_scales, dim=-1)  # (B, D, target_len, N)
-        stacked = stacked.permute(0, 2, 1, 3)  # (B, target_len, D, N)
+#         # Stack scales: (B, D, target_len, N)
+#         stacked = torch.stack(pooled_scales, dim=-1)  # (B, D, target_len, N)
+#         stacked = stacked.permute(0, 2, 1, 3)  # (B, target_len, D, N)
 
-        # Compute input-dependent weights per timestep and channel
-        weights = self.gate_linear(stacked)  # (B, target_len, D, N)
-        weights = F.softmax(weights, dim=-1)  # softmax over scales
+#         # Compute input-dependent weights per timestep and channel
+#         weights = self.gate_linear(stacked)  # (B, target_len, D, N)
+#         weights = F.softmax(weights, dim=-1)  # softmax over scales
 
-        # Weighted sum
-        out = (stacked * weights).sum(dim=-1)  # (B, target_len, D)
-        return out
+#         # Weighted sum
+#         out = (stacked * weights).sum(dim=-1)  # (B, target_len, D)
+#         return out
 
 
 class AttentionClassifier(nn.Module):
@@ -677,8 +677,8 @@ class AttentionClassifier(nn.Module):
         # -----------------------
         # Averaging
         # -----------------------
-        if whisper_embedding_len > 0:
-            self.averaging_module = MSDynamicGate(target_len=whisper_embedding_len)
+        # if whisper_embedding_len > 0:
+        #     self.averaging_module = MSDynamicGate(target_len=whisper_embedding_len)
 
         # -----------------------
         # Sentinels
@@ -787,17 +787,19 @@ class AttentionClassifier(nn.Module):
 
         # =======================
         # AUDIO SELF-ATTENTION
-        # =======================
-        if self.whisper_embedding_len > 0:
-            audio_out = torch.full(
-            (B, self.whisper_embedding_len, audio_in.size(-1)),
-            float("nan"),
-            device=audio_in.device,
-            dtype=audio_in.dtype,
-            )
-            if has_audio.any():
-                audio_out[has_audio] = self.averaging_module(audio_in[has_audio])
-                audio_in = audio_out
+        # # =======================
+        # if self.whisper_embedding_len > 0:
+        #     audio_out = torch.full(
+        #     (B, self.whisper_embedding_len, audio_in.size(-1)),
+        #     float("nan"),
+        #     device=audio_in.device,
+        #     dtype=audio_in.dtype,
+        #     )
+        #     if has_audio.any():
+        #         # audio_out[has_audio] = self.averaging_module(audio_in[has_audio])
+        #         # audio_in = audio_out
+        #         audio_out[has_audio] = audio_in[has_audio]
+        #         audio_in = audio_out
 
         _, Ta, _ = audio_in.shape
 

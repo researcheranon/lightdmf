@@ -536,14 +536,14 @@ class Inference:
         audio_length_sec = len(audio) / max(self.sr, 1)
 
         print("\nRun summary:", flush=True)
-        print(f"{'Audio length (s):':<20} {audio_length_sec:.2f}", flush=True)
-        print(f"{'Processing time (s):':<20} {total_elapsed:.2f}", flush=True)
-        if not self._whisper_is_audio_model:
-            whisper_time = self.profiler.get_stage_time("Whisper")
-            non_whisper_time = max(0.0, total_elapsed - whisper_time)
-            print(f"Total time excl. Whisper (s): {non_whisper_time:.2f}", flush=True)
+        print(f"{'Audio length (s)':<20} : {audio_length_sec:.2f}", flush=True)
+        print(f"{'Processing time (s)':<20} : {total_elapsed:.2f}", flush=True)
+        # if not self._whisper_is_audio_model:
+        #     whisper_time = self.profiler.get_stage_time("Whisper")
+        #     non_whisper_time = max(0.0, total_elapsed - whisper_time)
+        #     print(f"Total time excl. Whisper (s): {non_whisper_time:.2f}", flush=True)
         if total_elapsed > 0:
-            print(f"{'Rate:':<20} x {audio_length_sec / total_elapsed:.2f}", flush=True)
+            print(f"{'Rate':<19} : x {audio_length_sec / total_elapsed:.2f}", flush=True)
         # print(f"Segments processed: {len(results)}", flush=True)
 
         print(self.profiler.report(), flush=True)
@@ -801,7 +801,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--file", type=str, default="../audio_samples/case_concat.wav")
     parser.add_argument("--checkpoint_dir", type=str, default=None)
-    parser.add_argument("--checkpoint_code", type=str, default='lightweight')
+    parser.add_argument("--checkpoint_code", type=str, default='flagship')
     parser.add_argument("--sr", type=int, default=16000)
     parser.add_argument("--time", action="store_true")
     parser.add_argument("--no_cuda", action="store_true")
