@@ -7,13 +7,17 @@ output/*
 
 # 2. Allow the subdirectories themselves (non-recursive)
 !output/lightweight/
+!output/flagship/
 
 # 3. Ignore everything inside those subdirectories
 output/lightweight/*
+output/flagship/*
 
 # 4. Finally, un-ignore the specific files you want
 !output/lightweight/config.pth
 !output/lightweight/model.pth
+!output/flagship/config.pth
+!output/flagship/model.pth
 run/*
 src_working/*
 src/microphone_input.py
